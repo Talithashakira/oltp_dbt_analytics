@@ -1,0 +1,13 @@
+# Data mentah — bisa didownload ulang dari Kaggle, tidak perlu di-commit
+data_raw/*.csv
+
+# Virtual environment Python
+.venv/
+__pycache__/
+*.pyc
+
+# Log stray di root (bukan yang di dalam olist_dbt/)
+logs/
+
+# OS
+.DS_Store

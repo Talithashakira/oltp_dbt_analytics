@@ -1,0 +1,123 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: >
+      One row per unique person (customer_unique_id) — not per customer_id,
+      since Olist mints a new customer_id for every order a person places.
+      Grain: one row per customer_unique_id.
+    columns:
+      - name: customer_unique_id
+        tests:
+          - unique
+          - not_null
+      - name: current_city
+        description: City from this person's most recent order.
+      - name: current_state
+        description: State from this person's most recent order.
+      - name: customer_id_count
+        description: Number of distinct customer_id records tied to this person — a proxy for repeat purchase behavior.
+
+  - name: dim_products
+    description: "One row per product_id, enriched with the English category name. Grain: one row per product_id."
+    columns:
+      - name: product_id
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_date
+    description: >
+      Date spine covering every calendar day from the earliest order purchase
+      to the latest estimated delivery date. Grain: one row per calendar day.
+    columns:
+      - name: date_day
+        tests:
+          - unique
+          - not_null
+
+  - name: fact_orders
+    description: >
+      Grain: one row per order item (order_id + order_item_id). Item-level
+      measures (price, freight_value, item_revenue) are additive at this
+      grain — safe to SUM directly. Order-level attributes
+      (order_total_payment_value, primary_payment_type, review_score,
+      order_status) repeat on every item of a multi-item order — filter or
+      group by them freely, but do not SUM them without first collapsing to
+      one row per order, or you will double count.
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: order_id
+      - name: order_item_id
+        tests:
+          - not_null
+      - name: product_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_id
+      - name: customer_unique_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_unique_id
+      - name: order_status
+        description: Lifecycle status of the order at the time the raw data was extracted.
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - created
+                  - approved
+                  - invoiced
+                  - processing
+                  - shipped
+                  - delivered
+                  - unavailable
+                  - canceled
+      - name: price
+        tests:
+          - not_null
+      - name: freight_value
+        tests:
+          - not_null
+
+  - name: customer_lifetime_value
+    description: >
+      One row per customer (customer_unique_id) summarizing lifetime order
+      count, total spend, and average order value, built from fact_orders
+      item-level revenue. Grain: one row per customer_unique_id.
+    columns:
+      - name: customer_unique_id
+        tests:
+          - unique
+          - not_null
+
+  - name: monthly_sales_summary
+    description: >
+      One row per calendar month with order count, item count, revenue, and
+      average order value. Grain: one row per order_month.
+    columns:
+      - name: order_month
+        tests:
+          - unique
+          - not_null
+
+  - name: product_performance
+    description: >
+      One row per product summarizing units sold, total revenue, and average
+      review score (unit-weighted, since review_score is an order-level
+      attribute repeated across each item of an order). Grain: one row per
+      product_id.
+    columns:
+      - name: product_id
+        tests:
+          - unique
+          - not_null
