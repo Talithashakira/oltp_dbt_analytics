@@ -9,6 +9,9 @@ orders AS (
 -- customer_id is generated fresh for every order; customer_unique_id is the
 -- stable identifier for the actual person. Rank each of a person's
 -- customer_id rows by order recency so we can pick one "current" address.
+-- NULLS LAST keeps customer_id rows with no matching order from winning
+-- rank 1 (Postgres sorts NULL first under DESC by default). customer_id is
+-- the tie-breaker so the result is stable across runs.
 customer_orders AS (
     SELECT
         customers.customer_unique_id,
@@ -18,7 +21,8 @@ customer_orders AS (
         customers.customer_zip_code_prefix,
         ROW_NUMBER() OVER (
             PARTITION BY customers.customer_unique_id
-            ORDER BY orders.order_purchase_timestamp DESC
+            ORDER BY orders.order_purchase_timestamp DESC NULLS LAST,
+                     customers.customer_id
         ) AS recency_rank
     FROM customers
     LEFT JOIN orders ON customers.customer_id = orders.customer_id

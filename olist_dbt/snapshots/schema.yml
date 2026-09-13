@@ -1,0 +1,23 @@
+version: 2
+
+snapshots:
+  - name: sellers_snapshot
+    description: >
+      SCD Type 2 history of seller location attributes. Reads from the raw
+      source rather than stg_sellers so that changes to staging logic do not
+      register as data changes. Since the Olist dataset is static, this
+      snapshot demonstrates the mechanism rather than tracking live changes.
+    columns:
+      - name: seller_id
+        description: Seller identifier. Not unique here — one row per version of that seller's attributes.
+      - name: dbt_scd_id
+        description: Surrogate key, unique per version row.
+        tests:
+          - unique
+          - not_null
+      - name: dbt_valid_from
+        description: Timestamp this version became current.
+        tests:
+          - not_null
+      - name: dbt_valid_to
+        description: Timestamp this version was superseded. Null for the currently active version.

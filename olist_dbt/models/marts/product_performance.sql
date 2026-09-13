@@ -7,7 +7,7 @@ products AS (
 )
 
 SELECT
-    products.product_id,
+    fact_orders.product_id,
     products.product_category_name_english,
     COUNT(*) AS units_sold,
     SUM(fact_orders.item_revenue) AS total_revenue,
@@ -18,4 +18,4 @@ SELECT
     AVG(fact_orders.review_score) AS avg_review_score
 FROM fact_orders
 LEFT JOIN products ON fact_orders.product_id = products.product_id
-GROUP BY 1, 2
+GROUP BY fact_orders.product_id, products.product_category_name_english

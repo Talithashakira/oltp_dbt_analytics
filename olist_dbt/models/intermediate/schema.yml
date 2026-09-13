@@ -13,8 +13,14 @@ models:
           - not_null
       - name: total_payment_value
         description: Sum of payment_value across every payment method used on the order.
+        tests:
+          - not_null
       - name: payment_count
-        description: Number of payment transaction rows for the order (a split/installment payment counts as multiple rows).
+        description: >
+          Number of payment transaction rows for the order. An order paid with
+          multiple methods or vouchers has more than one row.
+        tests:
+          - not_null
       - name: max_installments
         description: The largest installment count used by any payment method on the order.
       - name: primary_payment_type
@@ -32,5 +38,10 @@ models:
           - not_null
       - name: review_id
         description: The review_id of the most recent review left for this order.
+        tests:
+          - not_null
       - name: review_score
         description: 1-5 star rating from the most recent review.
+        tests:
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]

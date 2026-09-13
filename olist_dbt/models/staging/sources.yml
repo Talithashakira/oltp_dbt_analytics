@@ -2,14 +2,23 @@ version: 2
 
 sources:
   - name: raw
-    schema: raw
+    schema: "{{ var('raw_schema', 'raw') }}"
     tables:
       - name: customers
+        identifier: "{{ var('raw_prefix', '') }}customers"
       - name: orders
+        identifier: "{{ var('raw_prefix', '') }}orders"
       - name: order_items
+        identifier: "{{ var('raw_prefix', '') }}order_items"
       - name: order_payments
+        identifier: "{{ var('raw_prefix', '') }}order_payments"
       - name: order_reviews
+        identifier: "{{ var('raw_prefix', '') }}order_reviews"
       - name: products
+        identifier: "{{ var('raw_prefix', '') }}products"
       - name: sellers
+        identifier: "{{ var('raw_prefix', '') }}sellers"
       - name: geolocation
+        identifier: "{{ var('raw_prefix', '') }}geolocation"
       - name: product_category_name_translation
+        identifier: "{{ var('raw_prefix', '') }}product_category_name_translation"

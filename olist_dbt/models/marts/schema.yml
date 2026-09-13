@@ -5,35 +5,85 @@ models:
     description: >
       One row per unique person (customer_unique_id) — not per customer_id,
       since Olist mints a new customer_id for every order a person places.
+      Location columns come from that person's most recent order, so a
+      customer who moved between orders shows their latest address only.
       Grain: one row per customer_unique_id.
     columns:
       - name: customer_unique_id
+        description: Stable identifier for the actual person across all their orders.
         tests:
           - unique
           - not_null
       - name: current_city
         description: City from this person's most recent order.
       - name: current_state
-        description: State from this person's most recent order.
+        description: Two-letter Brazilian state code from this person's most recent order.
+      - name: current_zip_code_prefix
+        description: First five digits of the postal code from this person's most recent order.
       - name: customer_id_count
-        description: Number of distinct customer_id records tied to this person — a proxy for repeat purchase behavior.
+        description: >
+          Number of distinct customer_id records tied to this person. Since
+          Olist issues a new customer_id per order, this doubles as an order
+          count and a proxy for repeat purchase behaviour.
+        tests:
+          - not_null
 
   - name: dim_products
-    description: "One row per product_id, enriched with the English category name. Grain: one row per product_id."
+    description: >
+      One row per product_id, enriched with the English category name from
+      the translation table. Products whose category has no translation fall
+      back to the original Portuguese name. Grain: one row per product_id.
     columns:
       - name: product_id
         tests:
           - unique
           - not_null
+      - name: product_category_name
+        description: Original Portuguese category name. Null for products with no category assigned.
+      - name: product_category_name_english
+        description: >
+          English category name, falling back to the Portuguese name when no
+          translation exists. Null when the product has no category at all.
+      - name: product_weight_g
+        description: Product weight in grams.
 
   - name: dim_date
     description: >
       Date spine covering every calendar day from the earliest order purchase
-      to the latest estimated delivery date. Grain: one row per calendar day.
+      to the latest estimated delivery date, with derived calendar attributes
+      so downstream models do not each reimplement quarter and month logic.
+      Grain: one row per calendar day.
     columns:
       - name: date_day
+        description: The calendar date. Foreign key target for fact_orders.order_date.
         tests:
           - unique
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: quarter
+        description: Calendar quarter, 1 through 4.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+      - name: month
+        description: Month number, 1 through 12.
+        tests:
+          - not_null
+      - name: month_name
+        description: Full month name in English, whitespace trimmed.
+        tests:
+          - not_null
+      - name: day_of_week
+        description: ISO day of week, 1 (Monday) through 7 (Sunday).
+        tests:
+          - not_null
+      - name: is_weekend
+        description: True for Saturday and Sunday.
+        tests:
           - not_null
 
   - name: fact_orders
@@ -44,9 +94,13 @@ models:
       (order_total_payment_value, primary_payment_type, review_score,
       order_status) repeat on every item of a multi-item order — filter or
       group by them freely, but do not SUM them without first collapsing to
-      one row per order, or you will double count.
+      one row per order, or you will double count. Includes orders of every
+      status, cancelled and unavailable ones among them, so revenue figures
+      built from this model are gross unless the consumer filters
+      order_status.
     columns:
       - name: order_id
+        description: Foreign key to stg_orders. Repeats across the items of a multi-item order.
         tests:
           - not_null
           - relationships:
@@ -54,23 +108,49 @@ models:
                 to: ref('stg_orders')
                 field: order_id
       - name: order_item_id
+        description: >
+          Sequence number of the item within its order, restarting at 1 for
+          each order. Unique only in combination with order_id.
         tests:
           - not_null
       - name: product_id
+        description: Foreign key to dim_products.
         tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_products')
                 field: product_id
-      - name: customer_unique_id
+      - name: seller_id
+        description: >
+          Foreign key to the seller who fulfilled this item. Items in the same
+          order can come from different sellers. No dim_sellers exists yet.
         tests:
+          - not_null
+      - name: customer_id
+        description: Per-order customer identifier from Olist. Not stable across a person's orders.
+        tests:
+          - not_null
+      - name: customer_unique_id
+        description: Stable person identifier. Foreign key to dim_customers.
+        tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_customers')
                 field: customer_unique_id
+      - name: order_date
+        description: Date the order was placed. Foreign key to dim_date.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
       - name: order_status
         description: Lifecycle status of the order at the time the raw data was extracted.
         tests:
+          - not_null
           - accepted_values:
               arguments:
                 values:
@@ -83,41 +163,119 @@ models:
                   - unavailable
                   - canceled
       - name: price
+        description: Item price excluding freight. Additive at this grain.
         tests:
           - not_null
       - name: freight_value
+        description: Freight cost charged for this item. Additive at this grain.
         tests:
           - not_null
+      - name: item_revenue
+        description: price + freight_value. The additive revenue measure downstream marts build on.
+        tests:
+          - not_null
+      - name: order_total_payment_value
+        description: >
+          Total paid across all payment methods on the order. Repeats on every
+          item row — do not SUM at this grain.
+      - name: primary_payment_type
+        description: Payment method carrying the largest value on the order. Repeats on every item row.
+      - name: review_score
+        description: >
+          1-5 rating from the order's most recent review. Repeats on every item
+          row, and is null for orders with no review.
 
   - name: customer_lifetime_value
     description: >
-      One row per customer (customer_unique_id) summarizing lifetime order
-      count, total spend, and average order value, built from fact_orders
-      item-level revenue. Grain: one row per customer_unique_id.
+      One row per person summarizing lifetime order count, total spend, and
+      average order value, built from fact_orders item-level revenue. Counts
+      orders of every status, so spend is gross of cancellations. Excludes
+      the 676 people whose orders never produced any order_items rows —
+      almost all of them unavailable or cancelled — so this model has fewer
+      rows than dim_customers.
+      Grain: one row per customer_unique_id.
     columns:
       - name: customer_unique_id
         tests:
           - unique
           - not_null
+      - name: order_count
+        description: Distinct orders placed by this person.
+        tests:
+          - not_null
+      - name: total_spend
+        description: Sum of item_revenue across every item this person ordered.
+        tests:
+          - not_null
+      - name: avg_order_value
+        description: total_spend divided by order_count.
+        tests:
+          - not_null
+      - name: first_order_date
+        tests:
+          - not_null
+      - name: most_recent_order_date
+        tests:
+          - not_null
 
   - name: monthly_sales_summary
     description: >
       One row per calendar month with order count, item count, revenue, and
-      average order value. Grain: one row per order_month.
+      average order value, enriched with calendar attributes from dim_date.
+      Counts orders of every status. Grain: one row per order_month.
     columns:
       - name: order_month
+        description: First day of the month the orders were placed in.
         tests:
           - unique
+          - not_null
+      - name: year
+        tests:
+          - not_null
+      - name: quarter
+        tests:
+          - not_null
+      - name: month_name
+        tests:
+          - not_null
+      - name: order_count
+        description: Distinct orders placed in this month.
+        tests:
+          - not_null
+      - name: order_item_count
+        description: Individual items sold in this month.
+        tests:
+          - not_null
+      - name: revenue
+        description: Sum of item_revenue for items in orders placed this month.
+        tests:
+          - not_null
+      - name: avg_order_value
+        tests:
           - not_null
 
   - name: product_performance
     description: >
       One row per product summarizing units sold, total revenue, and average
-      review score (unit-weighted, since review_score is an order-level
-      attribute repeated across each item of an order). Grain: one row per
-      product_id.
+      review score. The review average is unit-weighted, not order-weighted,
+      since review_score is an order-level attribute repeated across each item
+      of an order. Grain: one row per product_id.
     columns:
       - name: product_id
         tests:
           - unique
           - not_null
+      - name: product_category_name_english
+        description: Category from dim_products. Null for products with no category.
+      - name: units_sold
+        description: Number of item rows for this product across all orders.
+        tests:
+          - not_null
+      - name: total_revenue
+        description: Sum of item_revenue across every sale of this product.
+        tests:
+          - not_null
+      - name: avg_review_score
+        description: >
+          Unit-weighted mean review score. Null when none of this product's
+          orders received a review.
