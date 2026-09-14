@@ -66,7 +66,7 @@ models:
       - name: seller_id
         tests: [not_null, unique]
 
-  - name: stg_product_category_name_translation
+  - name: stg_product_category_translation
     columns:
       - name: product_category_name
         tests: [not_null, unique]

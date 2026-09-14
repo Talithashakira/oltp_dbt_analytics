@@ -44,4 +44,5 @@ models:
         description: 1-5 star rating from the most recent review.
         tests:
           - accepted_values:
-              values: [1, 2, 3, 4, 5]
+              arguments:
+                values: [1, 2, 3, 4, 5]

@@ -68,6 +68,11 @@ jobs:
         run: |
           dbt run --vars '{"raw_schema":"dbt_ci_seed","raw_prefix":"raw_"}'
 
+      - name: Build snapshots
+        working-directory: olist_dbt
+        run: |
+          dbt snapshot --vars '{"raw_schema":"dbt_ci_seed","raw_prefix":"raw_"}'
+
       - name: Run tests
         working-directory: olist_dbt
         run: |
