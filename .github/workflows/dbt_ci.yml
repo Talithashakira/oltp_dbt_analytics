@@ -66,9 +66,9 @@ jobs:
       - name: Build models
         working-directory: olist_dbt
         run: |
-          dbt run --vars '{"raw_schema": "dbt_ci_seed", "raw_prefix": "raw_"}'
+          dbt run --vars '{"raw_schema":"dbt_ci_seed","raw_prefix":"raw_"}'
 
       - name: Run tests
         working-directory: olist_dbt
         run: |
-          dbt test --vars '{"raw_schema": "dbt_ci_seed", "raw_prefix": "raw_"}'
+          dbt test --vars '{"raw_schema":"dbt_ci_seed","raw_prefix":"raw_"}'
