@@ -194,6 +194,5 @@ These are choices, not oversights, and they're stated here so nobody has to reve
 
 ## Next Steps
 
-- Build `dim_sellers` to open up seller-side analysis
 - Add source freshness checks
 - Add `exposures` to document which dashboards depend on which models

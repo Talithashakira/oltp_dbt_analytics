@@ -123,10 +123,13 @@ models:
                 field: product_id
       - name: seller_id
         description: >
-          Foreign key to the seller who fulfilled this item. Items in the same
-          order can come from different sellers. No dim_sellers exists yet.
+          Foreign key to dim_sellers. Items in the same order can come from different sellers.
         tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_sellers')
+                field: seller_id
       - name: customer_id
         description: Per-order customer identifier from Olist. Not stable across a person's orders.
         tests:
@@ -279,3 +282,17 @@ models:
         description: >
           Unit-weighted mean review score. Null when none of this product's
           orders received a review.
+      - name: dim_sellers
+        description: >
+          One row per seller with their registered location. Sellers are static in
+          the Olist dataset; see sellers_snapshot for the SCD Type 2 history of
+          these attributes. Grain: one row per seller_id.
+        columns:
+          - name: seller_id
+            tests:
+              - unique
+              - not_null
+          - name: seller_city
+            description: City the seller is registered in.
+          - name: seller_state
+            description: Two-letter Brazilian state code.
