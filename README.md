@@ -1,5 +1,7 @@
 ![dbt CI](https://github.com/Talithashakira/oltp_dbt_analytics/actions/workflows/dbt_ci.yml/badge.svg)
 
+**[Browse the interactive data model documentation →](https://talithashakira.github.io/oltp_dbt_analytics/)**
+
 # Olist Analytics Engineering Pipeline
 
 An end-to-end analytics engineering project that transforms raw Brazilian e-commerce data into a tested, documented dimensional model — built with dbt, PostgreSQL, and Docker, with automated CI on every push.
