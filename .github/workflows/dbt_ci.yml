@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -77,3 +82,92 @@ jobs:
         working-directory: olist_dbt
         run: |
           dbt test --vars '{"raw_schema":"dbt_ci_seed","raw_prefix":"raw_"}'
+
+  publish-docs:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_pass
+          POSTGRES_DB: ci_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dbt
+        run: pip install dbt-postgres
+
+      - name: Write profiles.yml
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml <<'EOF'
+          olist_dbt:
+            target: ci
+            outputs:
+              ci:
+                type: postgres
+                host: localhost
+                port: 5432
+                user: ci_user
+                pass: "ci_pass"
+                dbname: ci_db
+                schema: dbt_ci
+                threads: 4
+          EOF
+
+      - name: Install dbt packages
+        working-directory: olist_dbt
+        run: dbt deps
+
+      - name: Load seed data
+        working-directory: olist_dbt
+        run: dbt seed
+
+      - name: Build models
+        working-directory: olist_dbt
+        run: |
+          dbt run --vars '{"raw_schema":"dbt_ci_seed","raw_prefix":"raw_"}'
+
+      - name: Build snapshots
+        working-directory: olist_dbt
+        run: |
+          dbt snapshot --vars '{"raw_schema":"dbt_ci_seed","raw_prefix":"raw_"}'
+
+      - name: Generate docs
+        working-directory: olist_dbt
+        run: |
+          dbt docs generate --vars '{"raw_schema":"dbt_ci_seed","raw_prefix":"raw_"}'
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload docs artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: olist_dbt/target
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
